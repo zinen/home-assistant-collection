@@ -1,1 +1,138 @@
-# Empty for now
+blueprint:
+  name: Confirmable Telegram Notification
+  description: >-
+    A script that sends an actionable notification with a confirmation before
+    running the specified action.
+  domain: script
+  source_url: https://github.com/zinen/home-assistant-collection/blob/main/components/script/blueprints/confirmable_telegram_notification.yaml
+  author: zinen
+  input:
+    chat_id:
+      name: Chat ID
+      selector:
+        text:
+    confirm_question:
+      name: Text of the first message asking for the conformation
+      default: "Event happend that needs your approval."
+      selector:
+        text:
+    confirm_message_timeout:
+      name: Text repalceing the first in case of unhandled prompt
+      default: "Event happend that needed. It was timedout."
+      selector:
+        text:
+    confirm_message_okeyed:
+      name: Text repalceing the first in case of your approval prompt
+      default: "Event happend that needs your approval."
+      selector:
+        text:
+    confirm_message_dismised:
+      name: Text repalceing the first in case of your dismissal of the prompt
+      default: "Event happend that needs your approval."
+      selector:
+        text:
+mode: parallel
+sequence:
+  - variables:
+      chat_id: !input chat_id
+      cooldown: "{{ as_timestamp(now()) | round(0) + 300 }}"
+  - parallel:
+      - sequence:
+          - wait_for_trigger:
+              - trigger: event
+                event_type: telegram_sent
+            timeout:
+              hours: 0
+              minutes: 0
+              seconds: 10
+              milliseconds: 0
+          - if:
+              - condition: template
+                value_template: "{{ wait.completed }}"
+            then:
+              - action: input_text.set_value
+                metadata: {}
+                data:
+                  value: |
+                    {% if chat_id == wait.trigger.event.data.chat_id -%}
+                      {{ wait.trigger.event.data.message_id }}
+                    {% endif %}
+                target:
+                  entity_id: input_text.automation_auth_ev_charge_message_id_telegram
+            else:
+              - stop: >-
+                  Telegram send event failed. Chcek that chat id is right and
+                  the bot is allowed to post there
+                error: true
+      - action: telegram_bot.send_message
+        metadata: {}
+        data:
+          message: !input confirm_question
+          inline_keyboard:
+            - Approve:/approve
+            - Deny:/deny
+          target: "{{ chat_id }}"
+  - wait_for_trigger:
+      - trigger: event
+        event_type: telegram_callback
+        event_data:
+          command: /approve
+      - trigger: event
+        event_type: telegram_callback
+        event_data:
+          command: /deny
+    timeout:
+      hours: 0
+      minutes: 0
+      seconds: 10
+      milliseconds: 0
+  - variables:
+      first_message_id: >
+        {% if states('input_text.automation_auth_ev_charge_message_id_telegram')
+        != 'unknown' -%}
+          {{ states('input_text.automation_auth_ev_charge_message_id_telegram') }}
+        {% elif wait.completed is true and wait.trigger is not none %}
+          {{ wait.trigger.event.data.message_id }}
+        {% endif %}
+  - if:
+      - condition: template
+        value_template: "{{ first_message_id != '' }}"
+    then:
+      - action: telegram_bot.delete_message
+        metadata: {}
+        data:
+          message_id: "{{ first_message_id }}"
+          chat_id: "{{ chat_id }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ wait.completed }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ wait.trigger.event.data.command == '/approve' }}"
+                sequence:
+                  - action: notify.telegram_group
+                    metadata: {}
+                    data:
+                      message: !input confirm_message_okeyed
+                      target: "{{ chat_id }}"
+                    enabled: true
+              - conditions:
+                  - condition: template
+                    value_template: |
+                      {{ wait.trigger.event.data.command == '/deny' }}
+                sequence:
+                  - action: notify.telegram_group
+                    metadata: {}
+                    data:
+                      message: !input confirm_message_dismised
+                      target: "{{ chat_id }}"
+                    enabled: true
+    default:
+      - action: notify.telegram_group
+        metadata: {}
+        data:
+          message: !input confirm_message_timeout
+        enabled: true
