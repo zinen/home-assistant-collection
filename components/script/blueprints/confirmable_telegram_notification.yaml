@@ -34,7 +34,7 @@ blueprint:
 mode: parallel
 sequence:
   - variables:
-      chat_id: "{{ (input_chat_id | int) if input_chat_id is not none else null }}"
+      chat_id: "{{ (!input chat_id | int) if input_chat_id is not none else null }}"
       cooldown: "{{ as_timestamp(now()) | round(0) + 300 }}"
   - parallel:
       - sequence:
