@@ -2,7 +2,7 @@ blueprint:
   name: Confirmable Telegram Notification
   description: >-
     A script that sends an actionable notification with a confirmation before
-    running the specified action.
+    running the specified action. This using Telegram.
   domain: script
   source_url: https://github.com/zinen/home-assistant-collection/blob/main/components/script/blueprints/confirmable_telegram_notification.yaml
   author: zinen
@@ -18,23 +18,23 @@ blueprint:
         text:
     confirm_message_timeout:
       name: Text repalceing the first in case of unhandled prompt
-      default: "Event happend that needed. It was timedout."
+      default: "Event happend that needed you. It was timedout."
       selector:
         text:
     confirm_message_okeyed:
       name: Text repalceing the first in case of your approval prompt
-      default: "Event happend that needs your approval."
+      default: "Event happend and was approbed by you"
       selector:
         text:
     confirm_message_dismised:
       name: Text repalceing the first in case of your dismissal of the prompt
-      default: "Event happend that needs your approval."
+      default: "Event happend and was dismissed by you"
       selector:
         text:
 mode: parallel
 sequence:
   - variables:
-      chat_id: !input chat_id
+      chat_id: "{{ (input_chat_id | int) if input_chat_id is not none else null }}"
       cooldown: "{{ as_timestamp(now()) | round(0) + 300 }}"
   - parallel:
       - sequence:
@@ -60,6 +60,12 @@ sequence:
                 target:
                   entity_id: input_text.automation_auth_ev_charge_message_id_telegram
             else:
+              - action: input_text.set_value
+                metadata: {}
+                data:
+                  value: null
+                target:
+                  entity_id: input_text.automation_auth_ev_charge_message_id_telegram
               - stop: >-
                   Telegram send event failed. Chcek that chat id is right and
                   the bot is allowed to post there
